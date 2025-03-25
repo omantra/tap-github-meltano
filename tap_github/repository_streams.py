@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import parse_qs, urlparse
+from hashlib import sha1
 
 from dateutil.parser import parse
 from singer_sdk import typing as th  # JSON Schema typing helpers
@@ -1488,6 +1489,51 @@ class PullRequestCommitsStream(GitHubRestStream):
         row = super().post_process(row, context)
         if context is not None and "pull_number" in context:
             row["pull_number"] = context["pull_number"]
+        return row
+
+
+class PullRequestFilesStream(GitHubRestStream):
+    name = "pull_request_files"
+    path = "/repos/{org}/{repo}/pulls/{pull_number}/files"
+    ignore_parent_replication_key = False
+    primary_keys: ClassVar[list[str]] = ["pull_number", "filename", "sha"]
+    parent_stream_type = PullRequestsStream
+    state_partitioning_keys: ClassVar[list[str]] = ["repo", "org"]
+
+    schema = th.PropertiesList(
+        # Parent Keys
+        th.Property("org", th.StringType),
+        th.Property("repo", th.StringType),
+        th.Property("repo_id", th.IntegerType),
+        th.Property("pull_number", th.IntegerType),
+        th.Property("pull_id", th.IntegerType),
+        # Rest 
+        th.Property("sha", th.StringType),
+        th.Property("filename", th.StringType),
+        th.Property("status", th.StringType),
+        th.Property("additions", th.IntegerType),
+        th.Property("deletions", th.IntegerType),
+        th.Property("changes", th.IntegerType),
+        th.Property("blob_url", th.StringType),
+        th.Property("raw_url", th.StringType),
+        th.Property("contents_url", th.StringType),
+        th.Property("patch", th.StringType),
+        th.Property("previous_filename", th.StringType),
+    ).to_dict()
+
+    def post_process(self, row: dict, context: Optional[Dict[str, str]] = None) -> dict:
+        row = super().post_process(row, context)
+        if context is not None:
+            # Get PR ID from context
+            row["org"] = context["org"]
+            row["repo"] = context["repo"]
+            row["repo_id"] = context["repo_id"]
+            row["pull_number"] = context["pull_number"]
+            row["pull_id"] = context["pull_id"]
+        if not row["sha"]:
+            row["sha"] = sha1(b"" + row["file_name"] + "_" +row["status"] + "_"
+                    + str(row["additions"]) + "_" + str(row["changes"])
+                    + "_" + str(row["deletions"]).hexdigest()
         return row
 
 
