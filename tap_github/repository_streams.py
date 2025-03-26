@@ -1533,7 +1533,7 @@ class PullRequestFilesStream(GitHubRestStream):
         if not row["sha"]:
             row["sha"] = sha1(b"" + row["file_name"] + "_" +row["status"] + "_"
                     + str(row["additions"]) + "_" + str(row["changes"])
-                    + "_" + str(row["deletions"]).hexdigest()
+                    + "_" + str(row["deletions"])).hexdigest()
         return row
 
 
