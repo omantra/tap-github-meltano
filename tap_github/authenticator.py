@@ -344,18 +344,40 @@ class GitHubTokenAuthenticator(APIAuthenticatorBase):
         current_token = self.active_token.token if self.active_token else ""
         token_managers = deepcopy(self.token_managers)
         shuffle(token_managers)
+
         for token_manager in token_managers:
             if (
                 token_manager.has_calls_remaining()
                 and current_token != token_manager.token
             ):
                 self.active_token = token_manager
-                self.logger.info("Switching to fresh auth token")
+                self.logger.info("Switching to a fresh auth token.")
                 return
 
-        raise RuntimeError(
-            "All GitHub tokens have hit their rate limit. Stopping here."
+        # No available tokens - find the earliest reset time
+        next_reset = min(
+            (
+                tm.rate_limit_reset
+                for tm in token_managers
+                if tm.rate_limit_reset is not None
+            ),
+            default=None,
         )
+
+        if next_reset:
+            now = datetime.now(tz=timezone.utc)
+            wait_seconds = max(0, int((next_reset - now).total_seconds()) + 5)  # buffer time
+            self.logger.warning(
+                f"All GitHub tokens have reached their rate limit. Waiting {wait_seconds} seconds until reset."
+            )
+            time.sleep(wait_seconds)
+            self.get_next_auth_token()  # Retry after sleeping
+            return
+
+        raise RuntimeError(
+            "All GitHub tokens have hit their rate limit and no reset time could be determined."
+        )
+
 
     def update_rate_limit(
         self, response_headers: requests.models.CaseInsensitiveDict
@@ -370,14 +392,23 @@ class GitHubTokenAuthenticator(APIAuthenticatorBase):
         self,
         request: requests.PreparedRequest,
     ) -> requests.PreparedRequest:
-        if self.active_token:
-            # Make sure that our token is still valid or update it.
-            if not self.active_token.has_calls_remaining():
-                self.get_next_auth_token()
-            request.headers["Authorization"] = f"token {self.active_token.token}"
-        else:
-            self.logger.info(
-                "No auth token detected. "
-                "For higher rate limits, please specify `auth_token` in config."
-            )
-        return request
+        max_attempts = 3
+        attempts = 0
+
+        while attempts < max_attempts:
+            if self.active_token:
+                if not self.active_token.has_calls_remaining():
+                    self.get_next_auth_token()
+                if self.active_token and self.active_token.token:
+                    request.headers["Authorization"] = f"token {self.active_token.token}"
+                    return request
+            else:
+                self.logger.warning(
+                    "No valid auth token detected. Provide `auth_token` in config for higher rate limits."
+                )
+                break
+
+            attempts += 1
+            self.logger.warning(f"Retrying authentication attempt ({attempts}/{max_attempts})...")
+
+        raise RuntimeError("Failed to attach a valid GitHub auth token after multiple attempts.")
