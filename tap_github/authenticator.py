@@ -354,24 +354,28 @@ class GitHubTokenAuthenticator(APIAuthenticatorBase):
                 self.logger.info("Switching to a fresh auth token.")
                 return
 
-        # No available tokens - find the earliest reset time
-        next_reset = min(
+        # No usable tokens — find the token with the earliest rate_limit_reset
+        next_tm = min(
             (
-                tm.rate_limit_reset
-                for tm in token_managers
+                tm for tm in token_managers
                 if tm.rate_limit_reset is not None
             ),
+            key=lambda tm: tm.rate_limit_reset,
             default=None,
         )
 
-        if next_reset:
+        if next_tm:
             now = datetime.now(tz=timezone.utc)
-            wait_seconds = max(0, int((next_reset - now).total_seconds()) + 5)  # buffer time
+            wait_seconds = max(0, int((next_tm.rate_limit_reset - now).total_seconds()) + 5)
+
             self.logger.warning(
-                f"All GitHub tokens have reached their rate limit. Waiting {wait_seconds} seconds until reset."
+                f"All GitHub tokens have reached their rate limit. Waiting {wait_seconds} seconds for token credits to reset."
             )
+
             time.sleep(wait_seconds)
-            self.get_next_auth_token()  # Retry after sleeping
+
+            # After waiting, set that token as the active one
+            self.active_token = next_tm
             return
 
         raise RuntimeError(
