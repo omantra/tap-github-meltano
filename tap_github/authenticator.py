@@ -107,6 +107,49 @@ class PersonalTokenManager(TokenManager):
         super().__init__(token, rate_limit_buffer=rate_limit_buffer, **kwargs)
 
 
+class OAuthTokenManager(TokenManager):
+    def __init__(
+        self,
+        token: str,
+        refresh_token: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        rate_limit_buffer: int | None = None,
+        **kwargs,
+    ):
+        super().__init__(token, rate_limit_buffer=rate_limit_buffer, **kwargs)
+        self.refresh_token = refresh_token
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.token_expires_at: datetime | None = None  # optional tracking
+
+    def refresh_oauth_token(self) -> None:
+        """Refresh the OAuth token using GitHub's token endpoint."""
+        if not all([self.refresh_token, self.client_id, self.client_secret]):
+            raise RuntimeError("Cannot refresh token: missing credentials.")
+
+        response = requests.post(
+            url="https://github.com/login/oauth/access_token",
+            headers={"Accept": "application/json"},
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": self.refresh_token,
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+        self.token = data["access_token"]
+        self.refresh_token = data.get("refresh_token", self.refresh_token)  # Some flows rotate
+        expires_in = data.get("expires_in")
+        if expires_in:
+            self.token_expires_at = datetime.now(tz=timezone.utc) + timedelta(seconds=expires_in)
+
+    def is_valid_token(self) -> bool:
+        """OAuth tokens may be revoked, so validation is important."""
+        return super().is_valid_token()
+
 def generate_jwt_token(
     github_app_id: str,
     github_private_key: str,
@@ -287,6 +330,22 @@ class GitHubTokenAuthenticator(APIAuthenticatorBase):
             else:
                 logging.warning("A token was dismissed.")
 
+        oauth_tokens: set[str] = set()
+        if "oauth_token" in self._config:
+            oauth_tokens.add(self._config["oauth_token"])
+        if "additional_oauth_tokens" in self._config:
+            oauth_tokens = oauth_tokens.union(self._config["additional_oauth_tokens"])
+
+        oauth_token_managers: list[TokenManager] = []
+        for token in oauth_tokens:
+            token_manager = OAuthTokenManager(
+                token, rate_limit_buffer=rate_limit_buffer, logger=self.logger
+            )
+            if token_manager.is_valid_token():
+                oauth_token_managers.append(token_manager)
+            else:
+                self.logger.warning("An OAuth token was dismissed due to invalidity.")
+
         # Parse App level private keys and generate tokens
         # To simplify settings, we use a single env-key formatted as follows:
         # "{app_id};;{-----BEGIN RSA PRIVATE KEY-----\n_YOUR_PRIVATE_KEY_\n-----END RSA PRIVATE KEY-----}"  # noqa: E501
@@ -323,7 +382,7 @@ class GitHubTokenAuthenticator(APIAuthenticatorBase):
             f"Tap will run with {len(personal_token_managers)} personal auth tokens "
             f"and {len(app_token_managers)} app keys."
         )
-        return personal_token_managers + app_token_managers
+        return personal_token_managers + app_token_managers + oauth_token_managers
 
     def __init__(self, stream: RESTStream) -> None:
         """Init authenticator.
