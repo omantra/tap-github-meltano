@@ -15,6 +15,7 @@ from nested_lookup import nested_lookup
 from singer_sdk.exceptions import FatalAPIError, RetriableAPIError
 from singer_sdk.helpers.jsonpath import extract_jsonpath
 from singer_sdk.streams import GraphQLStream, RESTStream
+from backoff import on_exception, expo
 
 from tap_github.authenticator import GitHubTokenAuthenticator
 
@@ -63,6 +64,24 @@ class GitHubRestStream(RESTStream):
         headers = {"Accept": "application/vnd.github.v3+json"}
         headers["User-Agent"] = cast(str, self.config.get("user_agent", "tap-github"))
         return headers
+    
+    @on_exception(
+        expo,
+        RetriableAPIError,
+        max_tries=5,
+        jitter=0.5,
+    )
+    def _send_request_with_backoff(self, request: requests.PreparedRequest) -> requests.Response:
+        """Send a request with retries, auth, validation, and rate-limit tracking."""
+        request = self.authenticator.authenticate_request(request)
+
+        session = requests.Session()
+        response = session.send(request)
+
+        self.validate_response(response)
+        self.authenticator.update_rate_limit(response.headers)
+
+        return response
 
     def get_next_page_token(
         self,
@@ -351,6 +370,12 @@ class GitHubDiffStream(GitHubRestStream):
 
         yield {"diff": response.text, "success": True}
 
+    def make_request(
+        self,
+        prepared_request: requests.PreparedRequest,
+        context: dict | None = None,
+    ) -> requests.Response:
+        return self._send_request_with_backoff(prepared_request)
 
 class GitHubGraphqlStream(GraphQLStream, GitHubRestStream):
     """GitHub Graphql stream class."""

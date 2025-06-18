@@ -107,6 +107,49 @@ class PersonalTokenManager(TokenManager):
         super().__init__(token, rate_limit_buffer=rate_limit_buffer, **kwargs)
 
 
+class OAuthTokenManager(TokenManager):
+    def __init__(
+        self,
+        token: str,
+        refresh_token: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        rate_limit_buffer: int | None = None,
+        **kwargs,
+    ):
+        super().__init__(token, rate_limit_buffer=rate_limit_buffer, **kwargs)
+        self.refresh_token = refresh_token
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.token_expires_at: datetime | None = None  # optional tracking
+
+    def refresh_oauth_token(self) -> None:
+        """Refresh the OAuth token using GitHub's token endpoint."""
+        if not all([self.refresh_token, self.client_id, self.client_secret]):
+            raise RuntimeError("Cannot refresh token: missing credentials.")
+
+        response = requests.post(
+            url="https://github.com/login/oauth/access_token",
+            headers={"Accept": "application/json"},
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": self.refresh_token,
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+        self.token = data["access_token"]
+        self.refresh_token = data.get("refresh_token", self.refresh_token)  # Some flows rotate
+        expires_in = data.get("expires_in")
+        if expires_in:
+            self.token_expires_at = datetime.now(tz=timezone.utc) + timedelta(seconds=expires_in)
+
+    def is_valid_token(self) -> bool:
+        """OAuth tokens may be revoked, so validation is important."""
+        return super().is_valid_token()
+
 def generate_jwt_token(
     github_app_id: str,
     github_private_key: str,
@@ -287,6 +330,22 @@ class GitHubTokenAuthenticator(APIAuthenticatorBase):
             else:
                 logging.warning("A token was dismissed.")
 
+        oauth_tokens: set[str] = set()
+        if "oauth_token" in self._config:
+            oauth_tokens.add(self._config["oauth_token"])
+        if "additional_oauth_tokens" in self._config:
+            oauth_tokens = oauth_tokens.union(self._config["additional_oauth_tokens"])
+
+        oauth_token_managers: list[TokenManager] = []
+        for token in oauth_tokens:
+            token_manager = OAuthTokenManager(
+                token, rate_limit_buffer=rate_limit_buffer, logger=self.logger
+            )
+            if token_manager.is_valid_token():
+                oauth_token_managers.append(token_manager)
+            else:
+                self.logger.warning("An OAuth token was dismissed due to invalidity.")
+
         # Parse App level private keys and generate tokens
         # To simplify settings, we use a single env-key formatted as follows:
         # "{app_id};;{-----BEGIN RSA PRIVATE KEY-----\n_YOUR_PRIVATE_KEY_\n-----END RSA PRIVATE KEY-----}"  # noqa: E501
@@ -323,7 +382,7 @@ class GitHubTokenAuthenticator(APIAuthenticatorBase):
             f"Tap will run with {len(personal_token_managers)} personal auth tokens "
             f"and {len(app_token_managers)} app keys."
         )
-        return personal_token_managers + app_token_managers
+        return personal_token_managers + app_token_managers + oauth_token_managers
 
     def __init__(self, stream: RESTStream) -> None:
         """Init authenticator.
@@ -344,18 +403,44 @@ class GitHubTokenAuthenticator(APIAuthenticatorBase):
         current_token = self.active_token.token if self.active_token else ""
         token_managers = deepcopy(self.token_managers)
         shuffle(token_managers)
+
         for token_manager in token_managers:
             if (
                 token_manager.has_calls_remaining()
                 and current_token != token_manager.token
             ):
                 self.active_token = token_manager
-                self.logger.info("Switching to fresh auth token")
+                self.logger.info("Switching to a fresh auth token.")
                 return
 
-        raise RuntimeError(
-            "All GitHub tokens have hit their rate limit. Stopping here."
+        # No usable tokens — find the token with the earliest rate_limit_reset
+        next_tm = min(
+            (
+                tm for tm in token_managers
+                if tm.rate_limit_reset is not None
+            ),
+            key=lambda tm: tm.rate_limit_reset,
+            default=None,
         )
+
+        if next_tm:
+            now = datetime.now(tz=timezone.utc)
+            wait_seconds = max(0, int((next_tm.rate_limit_reset - now).total_seconds()) + 5)
+
+            self.logger.warning(
+                f"All GitHub tokens have reached their rate limit. Waiting {wait_seconds} seconds for token credits to reset."
+            )
+
+            time.sleep(wait_seconds)
+
+            # After waiting, set that token as the active one
+            self.active_token = next_tm
+            return
+
+        raise RuntimeError(
+            "All GitHub tokens have hit their rate limit and no reset time could be determined."
+        )
+
 
     def update_rate_limit(
         self, response_headers: requests.models.CaseInsensitiveDict
@@ -370,14 +455,23 @@ class GitHubTokenAuthenticator(APIAuthenticatorBase):
         self,
         request: requests.PreparedRequest,
     ) -> requests.PreparedRequest:
-        if self.active_token:
-            # Make sure that our token is still valid or update it.
-            if not self.active_token.has_calls_remaining():
-                self.get_next_auth_token()
-            request.headers["Authorization"] = f"token {self.active_token.token}"
-        else:
-            self.logger.info(
-                "No auth token detected. "
-                "For higher rate limits, please specify `auth_token` in config."
-            )
-        return request
+        max_attempts = 3
+        attempts = 0
+
+        while attempts < max_attempts:
+            if self.active_token:
+                if not self.active_token.has_calls_remaining():
+                    self.get_next_auth_token()
+                if self.active_token and self.active_token.token:
+                    request.headers["Authorization"] = f"token {self.active_token.token}"
+                    return request
+            else:
+                self.logger.warning(
+                    "No valid auth token detected. Provide `auth_token` in config for higher rate limits."
+                )
+                break
+
+            attempts += 1
+            self.logger.warning(f"Retrying authentication attempt ({attempts}/{max_attempts})...")
+
+        raise RuntimeError("Failed to attach a valid GitHub auth token after multiple attempts.")
