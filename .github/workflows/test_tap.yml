@@ -16,6 +16,10 @@ on:
     - poetry.lock
     - pyproject.toml
     - 'tap_github/**'
+  workflow_dispatch:
+  schedule:
+  # Every 6 hours
+  - cron: "0 */6 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -68,7 +72,7 @@ jobs:
         virtualenvs-create: true
         virtualenvs-in-project: true
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
       with:
         python-version: ${{ matrix.python-version }}
         cache: poetry
@@ -76,6 +80,11 @@ jobs:
       run: |
         poetry env use ${{ matrix.python-version }}
         poetry install
+    - name: Type check with mypy
+      id: type_check
+      continue-on-error: true
+      run: |
+        poetry run mypy tap_github
     - name: Test with pytest
       id: test_pytest
       continue-on-error: true

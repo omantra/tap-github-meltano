@@ -6,6 +6,9 @@ from typing import TYPE_CHECKING
 from tap_github.organization_streams import (
     OrganizationMembersStream,
     OrganizationStream,
+    ProjectFieldConfigurationsStream,
+    ProjectItemsStream,
+    ProjectsStream,
     TeamMembersStream,
     TeamRolesStream,
     TeamsStream,
@@ -20,6 +23,7 @@ from tap_github.repository_streams import (
     CommitsStream,
     CommunityProfileStream,
     ContributorsStream,
+    CustomPropertiesStream,
     DependenciesStream,
     DependentsStream,
     DeploymentsStream,
@@ -32,9 +36,6 @@ from tap_github.repository_streams import (
     LabelsStream,
     LanguagesStream,
     MilestonesStream,
-    ProjectCardsStream,
-    ProjectColumnsStream,
-    ProjectsStream,
     PullRequestCommitDiffsStream,
     PullRequestCommitsStream,
     PullRequestDiffsStream,
@@ -98,9 +99,6 @@ class Streams(Enum):
             LabelsStream,
             LanguagesStream,
             MilestonesStream,
-            ProjectCardsStream,
-            ProjectColumnsStream,
-            ProjectsStream,
             PullRequestCommitsStream,
             PullRequestCommitDiffsStream,
             PullRequestDiffsStream,
@@ -136,11 +134,15 @@ class Streams(Enum):
     ORGANIZATIONS = (
         {"organizations"},
         [
+            CustomPropertiesStream,
             OrganizationStream,
             OrganizationMembersStream,
             TeamMembersStream,
             TeamRolesStream,
             TeamsStream,
+            ProjectsStream,
+            ProjectFieldConfigurationsStream,
+            ProjectItemsStream,
         ],
     )
 
