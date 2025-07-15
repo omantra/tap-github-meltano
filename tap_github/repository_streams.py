@@ -1714,6 +1714,7 @@ class ReviewCommentsStream(GitHubRestStream):
 
     schema = th.PropertiesList(
         # Parent keys
+        th.Property("pull_number", th.IntegerType),
         th.Property("org", th.StringType),
         th.Property("repo", th.StringType),
         th.Property("repo_id", th.IntegerType),
@@ -1753,6 +1754,12 @@ class ReviewCommentsStream(GitHubRestStream):
         th.Property("original_line", th.IntegerType),
         th.Property("side", th.StringType),
     ).to_dict()
+
+    def post_process(self, row: dict, context: Context | None = None) -> dict:
+        row = super().post_process(row, context)
+        if context is not None:
+            row["pull_number"] = context["pull_number"]
+        return row
 
     def get_child_context(self, record: dict, context: Context | None) -> dict:
         return {
