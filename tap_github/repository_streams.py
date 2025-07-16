@@ -1756,9 +1756,13 @@ class ReviewCommentsStream(GitHubRestStream):
     ).to_dict()
 
     def post_process(self, row: dict, context: Context | None = None) -> dict:
+        # If there is a filter '!*.*url' this fails
+        idx = row.get('pull_request_url', '').rfind('/')
+        if idx > 0:
+            row['pull_number'] = int(row['pull_request_url'][idx + 1:])
+        else:
+            row['pull_number'] = 0
         row = super().post_process(row, context)
-        if context is not None:
-            row["pull_number"] = context["pull_number"]
         return row
 
     def get_child_context(self, record: dict, context: Context | None) -> dict:
