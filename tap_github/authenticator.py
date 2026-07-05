@@ -571,11 +571,7 @@ class GitHubTokenAuthenticator(APIAuthenticatorBase):
             tm for tokens in self.token_managers.values() for tm in tokens
         ]
         next_tm = min(
-            (
-                tm
-                for tm in all_token_managers
-                if tm.rate_limit_reset is not None
-            ),
+            (tm for tm in all_token_managers if tm.rate_limit_reset is not None),
             key=lambda tm: tm.rate_limit_reset,
             default=None,
         )
@@ -600,7 +596,6 @@ class GitHubTokenAuthenticator(APIAuthenticatorBase):
             "All GitHub tokens have hit their rate limit and no reset time "
             "could be determined."
         )
-
 
     def update_rate_limit(
         self,

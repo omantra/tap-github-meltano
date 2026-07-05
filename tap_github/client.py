@@ -9,12 +9,13 @@ import time
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 from urllib.parse import parse_qs, urlparse
 
+import requests
+from backoff import expo, on_exception
 from dateutil.parser import parse
 from nested_lookup import nested_lookup
 from singer_sdk.exceptions import FatalAPIError, RetriableAPIError
 from singer_sdk.helpers.jsonpath import extract_jsonpath
 from singer_sdk.streams import GraphQLStream, RESTStream
-from backoff import on_exception, expo
 
 from tap_github.authenticator import GitHubTokenAuthenticator
 
@@ -22,7 +23,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from types import FrameType
 
-    import requests
     from backoff.types import Details
     from singer_sdk.helpers.types import Context
 
@@ -68,14 +68,16 @@ class GitHubRestStream(RESTStream):
         headers = {"Accept": "application/vnd.github.v3+json"}
         headers["User-Agent"] = cast("str", self.config.get("user_agent", "tap-github"))
         return headers
-    
+
     @on_exception(
         expo,
         RetriableAPIError,
         max_tries=5,
         jitter=0.5,
     )
-    def _send_request_with_backoff(self, request: requests.PreparedRequest) -> requests.Response:
+    def _send_request_with_backoff(
+        self, request: requests.PreparedRequest
+    ) -> requests.Response:
         """Send a request with retries, auth, validation, and rate-limit tracking."""
         request = self.authenticator.authenticate_request(request)
 
@@ -434,6 +436,7 @@ class GitHubDiffStream(GitHubRestStream):
         context: dict | None = None,
     ) -> requests.Response:
         return self._send_request_with_backoff(prepared_request)
+
 
 class GitHubGraphqlStream(GraphQLStream, GitHubRestStream):
     """GitHub Graphql stream class."""

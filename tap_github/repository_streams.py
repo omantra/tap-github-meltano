@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from hashlib import sha1
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import parse_qs, urlparse
-from hashlib import sha1
 
 from dateutil.parser import parse
 from singer_sdk import typing as th  # JSON Schema typing helpers
@@ -1604,7 +1604,7 @@ class PullRequestFilesStream(GitHubRestStream):
         th.Property("repo_id", th.IntegerType),
         th.Property("pull_number", th.IntegerType),
         th.Property("pull_id", th.IntegerType),
-        # Rest 
+        # Rest
         th.Property("sha", th.StringType),
         th.Property("filename", th.StringType),
         th.Property("status", th.StringType),
@@ -1618,7 +1618,7 @@ class PullRequestFilesStream(GitHubRestStream):
         th.Property("previous_filename", th.StringType),
     ).to_dict()
 
-    def post_process(self, row: dict, context: Optional[Dict[str, str]] = None) -> dict:
+    def post_process(self, row: dict, context: Context | None = None) -> dict:
         row = super().post_process(row, context)
         if context is not None:
             # Get PR ID from context
@@ -1628,9 +1628,18 @@ class PullRequestFilesStream(GitHubRestStream):
             row["pull_number"] = context["pull_number"]
             row["pull_id"] = context["pull_id"]
         if not row["sha"]:
-            row["sha"] = sha1(b"" + row["file_name"] + "_" +row["status"] + "_"
-                    + str(row["additions"]) + "_" + str(row["changes"])
-                    + "_" + str(row["deletions"])).hexdigest()
+            row["sha"] = sha1(
+                b""
+                + row["file_name"]
+                + "_"
+                + row["status"]
+                + "_"
+                + str(row["additions"])
+                + "_"
+                + str(row["changes"])
+                + "_"
+                + str(row["deletions"])
+            ).hexdigest()
         return row
 
 
@@ -1803,11 +1812,11 @@ class ReviewCommentsStream(GitHubRestStream):
 
     def post_process(self, row: dict, context: Context | None = None) -> dict:
         # If there is a filter '!*.*url' this fails
-        idx = row.get('pull_request_url', '').rfind('/')
+        idx = row.get("pull_request_url", "").rfind("/")
         if idx > 0:
-            row['pull_number'] = int(row['pull_request_url'][idx + 1:])
+            row["pull_number"] = int(row["pull_request_url"][idx + 1 :])
         else:
-            row['pull_number'] = 0
+            row["pull_number"] = 0
         row = super().post_process(row, context)
         return row
 
