@@ -1627,19 +1627,20 @@ class PullRequestFilesStream(GitHubRestStream):
             row["repo_id"] = context["repo_id"]
             row["pull_number"] = context["pull_number"]
             row["pull_id"] = context["pull_id"]
-        if not row["sha"]:
-            row["sha"] = sha1(
-                b""
-                + row["file_name"]
-                + "_"
-                + row["status"]
-                + "_"
-                + str(row["additions"])
-                + "_"
-                + str(row["changes"])
-                + "_"
-                + str(row["deletions"])
-            ).hexdigest()
+        # GitHub omits `sha` for some file entries (e.g. very large diffs);
+        # synthesize a stable one from the file's attributes since it is a
+        # primary key.
+        if not row.get("sha"):
+            fingerprint = "_".join(
+                [
+                    row.get("filename", ""),
+                    row.get("status", ""),
+                    str(row.get("additions", 0)),
+                    str(row.get("changes", 0)),
+                    str(row.get("deletions", 0)),
+                ]
+            )
+            row["sha"] = sha1(fingerprint.encode("utf-8")).hexdigest()
         return row
 
 
