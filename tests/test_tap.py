@@ -516,3 +516,168 @@ def test_web_tag_parse_counter():
         "html.parser",
     ).span
     assert parse_counter(tag) == 5_000
+
+
+def test_issues_stream_captures_issue_type(repo_list_config):  # noqa: F811
+    """GitHub's issue type object is preserved as `issue_type` before `type` is
+    repurposed as the issue/pull_request discriminator."""
+    tap = TapGitHub(config=repo_list_config)
+    issues_stream = tap.streams["issues"]
+
+    issue_type = {
+        "id": 410,
+        "node_id": "IT_x",
+        "name": "Bug",
+        "description": "An unexpected problem",
+        "color": "red",
+    }
+    row = issues_stream.post_process(
+        {"type": issue_type, "body": "b", "title": "t"},
+        {"org": "o", "repo": "r", "repo_id": 1, "issue_number": 5},
+    )
+    assert row["issue_type"] == issue_type
+    assert row["type"] == "issue"
+
+
+def test_issues_stream_issue_type_none_when_absent(repo_list_config):  # noqa: F811
+    """Issues without a type produce a null `issue_type`; PRs stay discriminated."""
+    tap = TapGitHub(config=repo_list_config)
+    issues_stream = tap.streams["issues"]
+
+    row = issues_stream.post_process(
+        {"body": None, "title": None, "pull_request": {"url": "x"}},
+        {"org": "o", "repo": "r", "repo_id": 1, "issue_number": 5},
+    )
+    assert row["issue_type"] is None
+    assert row["type"] == "pull_request"
+
+
+def test_issues_child_context_includes_issue_number(repo_list_config):  # noqa: F811
+    """Issues expose issue_number (plus repo keys) to child streams."""
+    tap = TapGitHub(config=repo_list_config)
+    issues_stream = tap.streams["issues"]
+
+    context = issues_stream.get_child_context(
+        {"number": 42},
+        {"org": "MeltanoLabs", "repo": "tap-github", "repo_id": 1},
+    )
+    assert context == {
+        "org": "MeltanoLabs",
+        "repo": "tap-github",
+        "repo_id": 1,
+        "issue_number": 42,
+    }
+
+
+def test_sub_issues_stream_sets_parent_keys(repo_list_config):  # noqa: F811
+    """Sub-issues carry parent linkage and reuse issue normalization."""
+    tap = TapGitHub(config=repo_list_config)
+    sub_issues_stream = tap.streams["sub_issues"]
+
+    context = {
+        "org": "MeltanoLabs",
+        "repo": "tap-github",
+        "repo_id": 1,
+        "issue_number": 42,
+    }
+    row = sub_issues_stream.post_process(
+        {"type": None, "body": "b", "title": "t"}, context
+    )
+    assert row["parent_issue_number"] == 42
+    assert row["org"] == "MeltanoLabs"
+    assert row["repo"] == "tap-github"
+    assert row["repo_id"] == 1
+    assert row["type"] == "issue"  # inherited issue normalization
+
+
+def test_issue_types_stream_sets_org(organization_list_config):  # noqa: F811
+    """Org-level issue types are tagged with their org."""
+    tap = TapGitHub(config=organization_list_config)
+    issue_types_stream = tap.streams["issue_types"]
+
+    row = issue_types_stream.post_process(
+        {"id": 410, "name": "Bug"}, {"org": "MeltanoLabs"}
+    )
+    assert row["org"] == "MeltanoLabs"
+    assert row["name"] == "Bug"
+
+
+def test_issue_dependencies_stream_sets_source(repo_list_config):  # noqa: F811
+    """Dependency rows carry the source issue number and reuse issue normalization."""
+    tap = TapGitHub(config=repo_list_config)
+    stream = tap.streams["issue_dependencies_blocked_by"]
+
+    context = {
+        "org": "MeltanoLabs",
+        "repo": "tap-github",
+        "repo_id": 1,
+        "issue_number": 42,
+    }
+    row = stream.post_process({"type": None, "body": "b", "title": "t"}, context)
+    assert row["source_issue_number"] == 42
+    assert row["org"] == "MeltanoLabs"
+    assert row["repo"] == "tap-github"
+    assert row["type"] == "issue"  # inherited issue normalization
+
+
+def test_issue_field_values_stream_sets_parent_keys(repo_list_config):  # noqa: F811
+    """Issue field values are linked to their issue."""
+    tap = TapGitHub(config=repo_list_config)
+    stream = tap.streams["issue_field_values"]
+
+    context = {
+        "org": "MeltanoLabs",
+        "repo": "tap-github",
+        "repo_id": 1,
+        "issue_number": 42,
+    }
+    row = stream.post_process(
+        {"issue_field_id": 7, "issue_field_name": "Priority", "value": "High"},
+        context,
+    )
+    assert row["org"] == "MeltanoLabs"
+    assert row["repo"] == "tap-github"
+    assert row["repo_id"] == 1
+    assert row["issue_number"] == 42
+    assert row["value"] == "High"
+
+
+def test_issue_fields_stream_sets_org(organization_list_config):  # noqa: F811
+    """Org-level issue field definitions are tagged with their org."""
+    tap = TapGitHub(config=organization_list_config)
+    stream = tap.streams["issue_fields"]
+
+    row = stream.post_process(
+        {"id": 7, "name": "Priority", "data_type": "single_select"},
+        {"org": "MeltanoLabs"},
+    )
+    assert row["org"] == "MeltanoLabs"
+    assert row["data_type"] == "single_select"
+
+
+@pytest.mark.parametrize(
+    "stream_name",
+    ["project_status_updates", "project_views", "project_workflows"],
+)
+def test_project_child_streams_set_parent_keys(
+    organization_list_config,  # noqa: F811
+    stream_name,
+):
+    """ProjectV2 child streams tag each row with org + project_number."""
+    tap = TapGitHub(config=organization_list_config)
+    stream = tap.streams[stream_name]
+
+    row = stream.post_process(
+        {"id": "1", "node_id": "x"},
+        {"org": "MeltanoLabs", "project_number": 7},
+    )
+    assert row["org"] == "MeltanoLabs"
+    assert row["project_number"] == 7
+
+
+def test_project_graphql_queries_are_valid_syntax(organization_list_config):  # noqa: F811
+    """The ProjectV2 child stream GraphQL queries parse without syntax errors."""
+    graphql = pytest.importorskip("graphql")
+    tap = TapGitHub(config=organization_list_config)
+    for name in ["project_status_updates", "project_views", "project_workflows"]:
+        graphql.parse(tap.streams[name].query)

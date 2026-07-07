@@ -140,3 +140,10 @@ dmypy.json
 
 #Other
 .DS_Store
+
+# tools/ dev-test generated artifacts (scripts + *.template stay tracked)
+tools/*.jsonl
+tools/github_*catalog*.json
+tools/test_config.json
+tools/test_config.org.json
+tools/state.json

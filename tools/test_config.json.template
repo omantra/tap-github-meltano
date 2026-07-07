@@ -1,0 +1,6 @@
+{
+  "repositories": ["MeltanoLabs/tap-github"],
+  "start_date": "2024-01-01T00:00:00Z",
+  "user_agent": "tap-github-test",
+  "rate_limit_buffer": 100
+}
