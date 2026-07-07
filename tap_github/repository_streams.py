@@ -925,6 +925,10 @@ class IssuesStream(GitHubRestStream):
 
     def post_process(self, row: dict, context: Context | None = None) -> dict:
         row = super().post_process(row, context)
+        # GitHub's issue type (e.g. Bug/Feature/Task) arrives as an object under
+        # `type`; capture it as `issue_type` before `type` is repurposed below as
+        # the issue/pull_request discriminator.
+        row["issue_type"] = row.get("type")
         row["type"] = "pull_request" if "pull_request" in row else "issue"
         if row["body"] is not None:
             # some issue bodies include control characters such as \x00
@@ -940,6 +944,14 @@ class IssuesStream(GitHubRestStream):
             row["reactions"]["plus_one"] = row["reactions"].pop("+1", None)
             row["reactions"]["minus_one"] = row["reactions"].pop("-1", None)
         return row
+
+    def get_child_context(self, record: dict, context: Context | None) -> dict:
+        return {
+            "org": context["org"] if context else None,
+            "repo": context["repo"] if context else None,
+            "repo_id": context["repo_id"] if context else None,
+            "issue_number": record["number"],
+        }
 
     schema = th.PropertiesList(
         th.Property("id", th.IntegerType),
@@ -959,6 +971,16 @@ class IssuesStream(GitHubRestStream):
         th.Property("author_association", th.StringType),
         th.Property("body", th.StringType),
         th.Property("type", th.StringType),
+        th.Property(
+            "issue_type",
+            th.ObjectType(
+                th.Property("id", th.IntegerType),
+                th.Property("node_id", th.StringType),
+                th.Property("name", th.StringType),
+                th.Property("description", th.StringType),
+                th.Property("color", th.StringType),
+            ),
+        ),
         th.Property("user", user_object),
         th.Property(
             "labels",
@@ -992,6 +1014,49 @@ class IssuesStream(GitHubRestStream):
             ),
         ),
     ).to_dict()
+
+
+class SubIssuesStream(IssuesStream):
+    """Defines the 'sub_issues' stream: the sub-issues (children) of each issue.
+
+    Sub-issues are full issue objects, so this reuses the issues schema and
+    normalization, adding `parent_issue_number` to link each row to its parent
+    (the parent's URL is also available on the inherited `parent_issue_url`).
+
+    API Reference: https://docs.github.com/en/rest/issues/sub-issues
+    """
+
+    name = "sub_issues"
+    path = "/repos/{org}/{repo}/issues/{issue_number}/sub_issues"
+    parent_stream_type = IssuesStream
+    ignore_parent_replication_key = True
+    replication_key = None
+    use_cursor_pagination = False
+    state_partitioning_keys: ClassVar[list[str]] = ["repo", "org"]
+
+    schema: ClassVar[dict] = {
+        **IssuesStream.schema,
+        "properties": {
+            "parent_issue_number": {"type": ["integer", "null"]},
+            **IssuesStream.schema["properties"],
+        },
+    }
+
+    def get_url_params(
+        self,
+        context: Context | None,
+        next_page_token: Any | None,  # noqa: ANN401
+    ) -> dict[str, Any]:
+        """The sub-issues endpoint takes no `state` param; use base params only."""
+        return GitHubRestStream.get_url_params(self, context, next_page_token)
+
+    def post_process(self, row: dict, context: Context | None = None) -> dict:
+        row = super().post_process(row, context)
+        if context is not None:
+            row["org"] = context["org"]
+            row["repo"] = context["repo"]
+            row["parent_issue_number"] = context["issue_number"]
+        return row
 
 
 class IssueCommentsStream(GitHubRestStream):

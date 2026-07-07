@@ -244,6 +244,39 @@ class TeamRolesStream(GitHubRestStream):
     ).to_dict()
 
 
+class IssueTypesStream(GitHubRestStream):
+    """Defines the 'issue_types' stream: organization-level issue type
+    definitions (e.g. Bug, Feature, Task).
+
+    API Reference: https://docs.github.com/en/rest/orgs/issue-types
+    """
+
+    name = "issue_types"
+    path = "/orgs/{org}/issue-types"
+    primary_keys: ClassVar[list[str]] = ["id"]
+    parent_stream_type = OrganizationStream
+    ignore_parent_replication_key = True
+    state_partitioning_keys: ClassVar[list[str]] = ["org"]
+
+    def post_process(self, row: dict, context: Context | None = None) -> dict:
+        row = super().post_process(row, context)
+        if context is not None:
+            row["org"] = context["org"]
+        return row
+
+    schema = th.PropertiesList(
+        th.Property("org", th.StringType),
+        th.Property("id", th.IntegerType),
+        th.Property("node_id", th.StringType),
+        th.Property("name", th.StringType),
+        th.Property("description", th.StringType),
+        th.Property("color", th.StringType),
+        th.Property("is_enabled", th.BooleanType),
+        th.Property("created_at", th.DateTimeType),
+        th.Property("updated_at", th.DateTimeType),
+    ).to_dict()
+
+
 class ProjectsStream(GitHubGraphqlStream):
     """Fetches GitHub projects (new projects aka ProjectsV2) for an organization.
 
