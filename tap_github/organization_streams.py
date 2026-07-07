@@ -257,6 +257,9 @@ class IssueTypesStream(GitHubRestStream):
     parent_stream_type = OrganizationStream
     ignore_parent_replication_key = True
     state_partitioning_keys: ClassVar[list[str]] = ["org"]
+    # Orgs that have not enabled issue types (or that the token can't read) return
+    # 404; tolerate it so the run isn't aborted for those orgs.
+    tolerated_http_errors: ClassVar[list[int]] = [404]
 
     def post_process(self, row: dict, context: Context | None = None) -> dict:
         row = super().post_process(row, context)
@@ -290,6 +293,9 @@ class IssueFieldsStream(GitHubRestStream):
     parent_stream_type = OrganizationStream
     ignore_parent_replication_key = True
     state_partitioning_keys: ClassVar[list[str]] = ["org"]
+    # Orgs without custom issue fields (or unreadable by the token) return 404;
+    # tolerate it so the run isn't aborted for those orgs.
+    tolerated_http_errors: ClassVar[list[int]] = [404]
 
     def post_process(self, row: dict, context: Context | None = None) -> dict:
         row = super().post_process(row, context)
