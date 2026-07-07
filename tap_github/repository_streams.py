@@ -1059,6 +1059,120 @@ class SubIssuesStream(IssuesStream):
         return row
 
 
+class _IssueDependenciesStream(IssuesStream):
+    """Base for issue-dependency streams. Each row is a full issue object (the
+    blocking/blocked issue), linked to the issue whose dependencies were
+    requested via `source_issue_number`.
+
+    API Reference: https://docs.github.com/en/rest/issues/issue-dependencies
+    """
+
+    parent_stream_type = IssuesStream
+    ignore_parent_replication_key = True
+    replication_key = None
+    use_cursor_pagination = False
+    state_partitioning_keys: ClassVar[list[str]] = ["repo", "org"]
+    primary_keys: ClassVar[list[str]] = ["repo_id", "source_issue_number", "id"]
+
+    schema: ClassVar[dict] = {
+        **IssuesStream.schema,
+        "properties": {
+            "source_issue_number": {"type": ["integer", "null"]},
+            **IssuesStream.schema["properties"],
+        },
+    }
+
+    def get_url_params(
+        self,
+        context: Context | None,
+        next_page_token: Any | None,  # noqa: ANN401
+    ) -> dict[str, Any]:
+        """The dependency endpoints take no `state` param; use base params only."""
+        return GitHubRestStream.get_url_params(self, context, next_page_token)
+
+    def post_process(self, row: dict, context: Context | None = None) -> dict:
+        row = super().post_process(row, context)
+        if context is not None:
+            row["org"] = context["org"]
+            row["repo"] = context["repo"]
+            row["source_issue_number"] = context["issue_number"]
+        return row
+
+
+class IssueBlockedByStream(_IssueDependenciesStream):
+    """Issues that block a given issue (its 'blocked by' dependencies)."""
+
+    name = "issue_dependencies_blocked_by"
+    path = "/repos/{org}/{repo}/issues/{issue_number}/dependencies/blocked_by"
+
+
+class IssueBlockingStream(_IssueDependenciesStream):
+    """Issues that a given issue blocks (its 'blocking' dependencies)."""
+
+    name = "issue_dependencies_blocking"
+    path = "/repos/{org}/{repo}/issues/{issue_number}/dependencies/blocking"
+
+
+class IssueFieldValuesStream(GitHubRestStream):
+    """Defines the 'issue_field_values' stream: the organization custom issue
+    field values set on each issue.
+
+    API Reference: https://docs.github.com/en/rest/issues/issue-field-values
+    """
+
+    name = "issue_field_values"
+    path = "/repos/{org}/{repo}/issues/{issue_number}/issue-field-values"
+    primary_keys: ClassVar[list[str]] = [
+        "repo_id",
+        "issue_number",
+        "issue_field_id",
+    ]
+    parent_stream_type = IssuesStream
+    ignore_parent_replication_key = True
+    state_partitioning_keys: ClassVar[list[str]] = ["repo", "org"]
+
+    def post_process(self, row: dict, context: Context | None = None) -> dict:
+        row = super().post_process(row, context)
+        if context is not None:
+            row["org"] = context["org"]
+            row["repo"] = context["repo"]
+            row["issue_number"] = context["issue_number"]
+        return row
+
+    schema = th.PropertiesList(
+        th.Property("org", th.StringType),
+        th.Property("repo", th.StringType),
+        th.Property("repo_id", th.IntegerType),
+        th.Property("issue_number", th.IntegerType),
+        th.Property("issue_field_id", th.IntegerType),
+        th.Property("issue_field_name", th.StringType),
+        th.Property("node_id", th.StringType),
+        th.Property("data_type", th.StringType),
+        th.Property(
+            "value",
+            th.CustomType({"type": ["string", "number", "integer", "null"]}),
+        ),
+        th.Property(
+            "single_select_option",
+            th.ObjectType(
+                th.Property("id", th.IntegerType),
+                th.Property("name", th.StringType),
+                th.Property("color", th.StringType),
+            ),
+        ),
+        th.Property(
+            "multi_select_options",
+            th.ArrayType(
+                th.ObjectType(
+                    th.Property("id", th.IntegerType),
+                    th.Property("name", th.StringType),
+                    th.Property("color", th.StringType),
+                )
+            ),
+        ),
+    ).to_dict()
+
+
 class IssueCommentsStream(GitHubRestStream):
     """
     Defines 'IssueComments' stream.

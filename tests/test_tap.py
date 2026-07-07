@@ -600,3 +600,56 @@ def test_issue_types_stream_sets_org(organization_list_config):  # noqa: F811
     )
     assert row["org"] == "MeltanoLabs"
     assert row["name"] == "Bug"
+
+
+def test_issue_dependencies_stream_sets_source(repo_list_config):  # noqa: F811
+    """Dependency rows carry the source issue number and reuse issue normalization."""
+    tap = TapGitHub(config=repo_list_config)
+    stream = tap.streams["issue_dependencies_blocked_by"]
+
+    context = {
+        "org": "MeltanoLabs",
+        "repo": "tap-github",
+        "repo_id": 1,
+        "issue_number": 42,
+    }
+    row = stream.post_process({"type": None, "body": "b", "title": "t"}, context)
+    assert row["source_issue_number"] == 42
+    assert row["org"] == "MeltanoLabs"
+    assert row["repo"] == "tap-github"
+    assert row["type"] == "issue"  # inherited issue normalization
+
+
+def test_issue_field_values_stream_sets_parent_keys(repo_list_config):  # noqa: F811
+    """Issue field values are linked to their issue."""
+    tap = TapGitHub(config=repo_list_config)
+    stream = tap.streams["issue_field_values"]
+
+    context = {
+        "org": "MeltanoLabs",
+        "repo": "tap-github",
+        "repo_id": 1,
+        "issue_number": 42,
+    }
+    row = stream.post_process(
+        {"issue_field_id": 7, "issue_field_name": "Priority", "value": "High"},
+        context,
+    )
+    assert row["org"] == "MeltanoLabs"
+    assert row["repo"] == "tap-github"
+    assert row["repo_id"] == 1
+    assert row["issue_number"] == 42
+    assert row["value"] == "High"
+
+
+def test_issue_fields_stream_sets_org(organization_list_config):  # noqa: F811
+    """Org-level issue field definitions are tagged with their org."""
+    tap = TapGitHub(config=organization_list_config)
+    stream = tap.streams["issue_fields"]
+
+    row = stream.post_process(
+        {"id": 7, "name": "Priority", "data_type": "single_select"},
+        {"org": "MeltanoLabs"},
+    )
+    assert row["org"] == "MeltanoLabs"
+    assert row["data_type"] == "single_select"

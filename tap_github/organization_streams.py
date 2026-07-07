@@ -277,6 +277,53 @@ class IssueTypesStream(GitHubRestStream):
     ).to_dict()
 
 
+class IssueFieldsStream(GitHubRestStream):
+    """Defines the 'issue_fields' stream: organization-level custom issue field
+    definitions (e.g. a 'Priority' single-select or 'Story Points' number).
+
+    API Reference: https://docs.github.com/en/rest/orgs/issue-fields
+    """
+
+    name = "issue_fields"
+    path = "/orgs/{org}/issue-fields"
+    primary_keys: ClassVar[list[str]] = ["id"]
+    parent_stream_type = OrganizationStream
+    ignore_parent_replication_key = True
+    state_partitioning_keys: ClassVar[list[str]] = ["org"]
+
+    def post_process(self, row: dict, context: Context | None = None) -> dict:
+        row = super().post_process(row, context)
+        if context is not None:
+            row["org"] = context["org"]
+        return row
+
+    schema = th.PropertiesList(
+        th.Property("org", th.StringType),
+        th.Property("id", th.IntegerType),
+        th.Property("node_id", th.StringType),
+        th.Property("name", th.StringType),
+        th.Property("description", th.StringType),
+        th.Property("data_type", th.StringType),
+        th.Property("visibility", th.StringType),
+        th.Property(
+            "options",
+            th.ArrayType(
+                th.ObjectType(
+                    th.Property("id", th.IntegerType),
+                    th.Property("name", th.StringType),
+                    th.Property("description", th.StringType),
+                    th.Property("color", th.StringType),
+                    th.Property("priority", th.IntegerType),
+                    th.Property("created_at", th.DateTimeType),
+                    th.Property("updated_at", th.DateTimeType),
+                )
+            ),
+        ),
+        th.Property("created_at", th.DateTimeType),
+        th.Property("updated_at", th.DateTimeType),
+    ).to_dict()
+
+
 class ProjectsStream(GitHubGraphqlStream):
     """Fetches GitHub projects (new projects aka ProjectsV2) for an organization.
 
