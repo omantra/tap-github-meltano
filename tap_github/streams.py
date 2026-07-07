@@ -11,6 +11,9 @@ from tap_github.organization_streams import (
     ProjectFieldConfigurationsStream,
     ProjectItemsStream,
     ProjectsStream,
+    ProjectStatusUpdatesStream,
+    ProjectViewsStream,
+    ProjectWorkflowsStream,
     TeamMembersStream,
     TeamRolesStream,
     TeamsStream,
@@ -167,6 +170,9 @@ class Streams(Enum):
             ProjectsStream,
             ProjectFieldConfigurationsStream,
             ProjectItemsStream,
+            ProjectStatusUpdatesStream,
+            ProjectViewsStream,
+            ProjectWorkflowsStream,
         ],
     )
 

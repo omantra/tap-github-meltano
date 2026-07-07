@@ -653,3 +653,31 @@ def test_issue_fields_stream_sets_org(organization_list_config):  # noqa: F811
     )
     assert row["org"] == "MeltanoLabs"
     assert row["data_type"] == "single_select"
+
+
+@pytest.mark.parametrize(
+    "stream_name",
+    ["project_status_updates", "project_views", "project_workflows"],
+)
+def test_project_child_streams_set_parent_keys(
+    organization_list_config,  # noqa: F811
+    stream_name,
+):
+    """ProjectV2 child streams tag each row with org + project_number."""
+    tap = TapGitHub(config=organization_list_config)
+    stream = tap.streams[stream_name]
+
+    row = stream.post_process(
+        {"id": "1", "node_id": "x"},
+        {"org": "MeltanoLabs", "project_number": 7},
+    )
+    assert row["org"] == "MeltanoLabs"
+    assert row["project_number"] == 7
+
+
+def test_project_graphql_queries_are_valid_syntax(organization_list_config):  # noqa: F811
+    """The ProjectV2 child stream GraphQL queries parse without syntax errors."""
+    graphql = pytest.importorskip("graphql")
+    tap = TapGitHub(config=organization_list_config)
+    for name in ["project_status_updates", "project_views", "project_workflows"]:
+        graphql.parse(tap.streams[name].query)

@@ -1153,3 +1153,234 @@ class ProjectItemsStream(GitHubGraphqlStream):
             ),
         )
         return properties.to_dict()
+
+
+class ProjectStatusUpdatesStream(GitHubGraphqlStream):
+    """Fetches the status updates posted on a ProjectV2 (agile status reporting).
+
+    Child of ProjectsStream; one record per status update.
+
+    API Reference: https://docs.github.com/en/graphql/reference/objects#projectv2statusupdate
+    """
+
+    name = "project_status_updates"
+    primary_keys: ClassVar[list[str]] = ["org", "project_number", "id"]
+    parent_stream_type = ProjectsStream
+    ignore_parent_replication_key = True
+    state_partitioning_keys: ClassVar[list[str]] = ["org", "project_number"]
+    query_jsonpath = "$.data.organization.projectV2.statusUpdates.nodes[*]"
+
+    @property
+    def query(self) -> str:
+        """GraphQL query to fetch a page of project status updates."""
+        return f"""
+        query ProjectStatusUpdates(
+            $org: String!,
+            $project_number: Int!,
+            $nextPageCursor_0: String
+        ) {{
+          organization(login: $org) {{
+            projectV2(number: $project_number) {{
+              statusUpdates(first: 100, after: $nextPageCursor_0) {{
+                nodes {{
+                  id: fullDatabaseId
+                  node_id: id
+                  body
+                  body_html: bodyHTML
+                  start_date: startDate
+                  target_date: targetDate
+                  status
+                  created_at: createdAt
+                  updated_at: updatedAt
+                  creator {{
+                    {ACTOR_FRAGMENT}
+                  }}
+                }}
+                pageInfo {{
+                  hasNextPage_0: hasNextPage
+                  endCursor_0: endCursor
+                }}
+                totalCount
+              }}
+            }}
+          }}
+          rateLimit {{
+            cost
+          }}
+        }}
+        """
+
+    def post_process(self, row: dict, context: Context | None = None) -> dict:
+        row = super().post_process(row, context)
+        if context:
+            row["org"] = context["org"]
+            row["project_number"] = context["project_number"]
+        return row
+
+    schema = th.PropertiesList(
+        th.Property("org", th.StringType),
+        th.Property("project_number", th.IntegerType),
+        th.Property("id", th.StringType, nullable=False),  # fullDatabaseId
+        th.Property("node_id", th.StringType),
+        th.Property("body", th.StringType, required=False),
+        th.Property("body_html", th.StringType, required=False),
+        th.Property("start_date", th.DateType, required=False),
+        th.Property("target_date", th.DateType, required=False),
+        th.Property("status", th.StringType, required=False),
+        th.Property("created_at", th.DateTimeType),
+        th.Property("updated_at", th.DateTimeType),
+        th.Property(
+            "creator",
+            th.ObjectType(
+                th.Property("login", th.StringType),
+                th.Property("resource_path", th.StringType),
+                th.Property("url", th.StringType),
+                th.Property("type", th.StringType),
+                th.Property("node_id", th.StringType),
+                th.Property("id", th.StringType, required=False),
+            ),
+            required=False,  # creator is nullable in GraphQL
+        ),
+    ).to_dict()
+
+
+class ProjectViewsStream(GitHubGraphqlStream):
+    """Fetches the saved views (board/table/roadmap layouts) of a ProjectV2.
+
+    Child of ProjectsStream; one record per view.
+
+    API Reference: https://docs.github.com/en/graphql/reference/objects#projectv2view
+    """
+
+    name = "project_views"
+    primary_keys: ClassVar[list[str]] = ["org", "project_number", "id"]
+    parent_stream_type = ProjectsStream
+    ignore_parent_replication_key = True
+    state_partitioning_keys: ClassVar[list[str]] = ["org", "project_number"]
+    query_jsonpath = "$.data.organization.projectV2.views.nodes[*]"
+
+    @property
+    def query(self) -> str:
+        """GraphQL query to fetch a page of project views."""
+        return """
+        query ProjectViews(
+            $org: String!,
+            $project_number: Int!,
+            $nextPageCursor_0: String
+        ) {
+          organization(login: $org) {
+            projectV2(number: $project_number) {
+              views(first: 100, after: $nextPageCursor_0) {
+                nodes {
+                  id: fullDatabaseId
+                  node_id: id
+                  name
+                  number
+                  layout
+                  filter
+                  created_at: createdAt
+                  updated_at: updatedAt
+                }
+                pageInfo {
+                  hasNextPage_0: hasNextPage
+                  endCursor_0: endCursor
+                }
+                totalCount
+              }
+            }
+          }
+          rateLimit {
+            cost
+          }
+        }
+        """
+
+    def post_process(self, row: dict, context: Context | None = None) -> dict:
+        row = super().post_process(row, context)
+        if context:
+            row["org"] = context["org"]
+            row["project_number"] = context["project_number"]
+        return row
+
+    schema = th.PropertiesList(
+        th.Property("org", th.StringType),
+        th.Property("project_number", th.IntegerType),
+        th.Property("id", th.StringType, nullable=False),  # fullDatabaseId
+        th.Property("node_id", th.StringType),
+        th.Property("name", th.StringType),
+        th.Property("number", th.IntegerType),
+        th.Property("layout", th.StringType),
+        th.Property("filter", th.StringType, required=False),
+        th.Property("created_at", th.DateTimeType),
+        th.Property("updated_at", th.DateTimeType),
+    ).to_dict()
+
+
+class ProjectWorkflowsStream(GitHubGraphqlStream):
+    """Fetches the built-in automations (workflows) of a ProjectV2.
+
+    Child of ProjectsStream; one record per workflow.
+
+    API Reference: https://docs.github.com/en/graphql/reference/objects#projectv2workflow
+    """
+
+    name = "project_workflows"
+    primary_keys: ClassVar[list[str]] = ["org", "project_number", "id"]
+    parent_stream_type = ProjectsStream
+    ignore_parent_replication_key = True
+    state_partitioning_keys: ClassVar[list[str]] = ["org", "project_number"]
+    query_jsonpath = "$.data.organization.projectV2.workflows.nodes[*]"
+
+    @property
+    def query(self) -> str:
+        """GraphQL query to fetch a page of project workflows."""
+        return """
+        query ProjectWorkflows(
+            $org: String!,
+            $project_number: Int!,
+            $nextPageCursor_0: String
+        ) {
+          organization(login: $org) {
+            projectV2(number: $project_number) {
+              workflows(first: 100, after: $nextPageCursor_0) {
+                nodes {
+                  id: fullDatabaseId
+                  node_id: id
+                  name
+                  number
+                  enabled
+                  created_at: createdAt
+                  updated_at: updatedAt
+                }
+                pageInfo {
+                  hasNextPage_0: hasNextPage
+                  endCursor_0: endCursor
+                }
+                totalCount
+              }
+            }
+          }
+          rateLimit {
+            cost
+          }
+        }
+        """
+
+    def post_process(self, row: dict, context: Context | None = None) -> dict:
+        row = super().post_process(row, context)
+        if context:
+            row["org"] = context["org"]
+            row["project_number"] = context["project_number"]
+        return row
+
+    schema = th.PropertiesList(
+        th.Property("org", th.StringType),
+        th.Property("project_number", th.IntegerType),
+        th.Property("id", th.StringType, nullable=False),  # fullDatabaseId
+        th.Property("node_id", th.StringType),
+        th.Property("name", th.StringType),
+        th.Property("number", th.IntegerType),
+        th.Property("enabled", th.BooleanType),
+        th.Property("created_at", th.DateTimeType),
+        th.Property("updated_at", th.DateTimeType),
+    ).to_dict()
