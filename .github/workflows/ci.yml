@@ -1,7 +1,7 @@
 name: CI
 
 on:
-  # Run on all pull requests and on pushes to main.
+  # Run on all pull requests and on pushes to main / xflow_dev.
   pull_request:
     paths:
     - .github/workflows/ci.yml
@@ -12,6 +12,7 @@ on:
   push:
     branches:
       - main
+      - xflow_dev
     paths:
     - .github/workflows/ci.yml
     - pyproject.toml
@@ -19,9 +20,6 @@ on:
     - tap_github/**
     - tests/**
   workflow_dispatch:
-  schedule:
-  # Every 6 hours
-  - cron: "0 */6 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -33,6 +31,13 @@ env:
 jobs:
   tests:
     name: CI
+
+    # A same-repo PR (e.g. xflow_dev -> main) fires both `push` and
+    # `pull_request`, and the two events have different `github.ref` values so
+    # the concurrency group above cannot dedupe them. Push runs cover our own
+    # branches; only fork PRs (which produce no push event here) need the
+    # pull_request run.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
 
     runs-on: ubuntu-latest
     env:

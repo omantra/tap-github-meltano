@@ -1,7 +1,10 @@
 name: Build and Publish Python Package
 
 on:
+  # Only build/publish for release tags -- no builds on ordinary branch pushes.
   push:
+    tags:
+    - "v*"
 
 permissions:
   contents: write
