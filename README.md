@@ -1,5 +1,10 @@
 # tap-github
 
+[![CI](https://github.com/omantra/tap-github-meltano/actions/workflows/ci.yml/badge.svg)](https://github.com/omantra/tap-github-meltano/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/version-1.29.0-blue.svg)](pyproject.toml)
+[![Status](https://img.shields.io/badge/status-production-brightgreen.svg)](https://pypi.org/classifiers/)
+[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue.svg)](https://www.python.org/)
+
 `tap-github` is a Singer tap for GitHub.
 
 Built with the [Singer SDK](https://gitlab.com/meltano/singer-sdk).

@@ -47,11 +47,8 @@ jobs:
     strategy:
       matrix:
         python-version:
-        - "3.14"
         - "3.13"
         - "3.12"
-        - "3.11"
-        - "3.10"
       # run the matrix jobs one after the other so they can benefit from caching
 
     steps:

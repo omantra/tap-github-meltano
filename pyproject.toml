@@ -3,7 +3,7 @@ name = "meltanolabs-tap-github"
 dynamic = [ "version" ]
 description = "Singer tap for GitHub, built with the Singer SDK."
 authors = [{ name = "Meltano and Meltano Community", email = "hello@meltano.com" }]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 readme = "README.md"
 license = "Apache-2.0"
 maintainers = [
@@ -19,14 +19,12 @@ keywords = [
     "GitHub",
 ]
 classifiers = [
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Implementation :: CPython",
     "Typing :: Typed",
 ]
@@ -144,19 +142,15 @@ requires = [
 ]
 env_list = [
     "type",
-    "3.14",
     "3.13",
     "3.12",
-    "3.11",
-    "3.10",
 ]
 
 [tool.tox.gh.python]
-"3.14" = ["type", "noconfig", "3.14"]
-"3.13" = ["noconfig"]
+# 3.13 carries the `type` (mypy) env, which used to run under 3.14 before that
+# version was dropped from the CI matrix.
+"3.13" = ["type", "noconfig"]
 "3.12" = ["noconfig"]
-"3.11" = ["noconfig"]
-"3.10" = ["noconfig"]
 
 [tool.tox.env_run_base]
 description = "Run test under {base_python}"
