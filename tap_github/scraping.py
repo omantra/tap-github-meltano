@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
@@ -157,7 +157,7 @@ def scrape_metrics(
                 getattr(contributors_node, "next_element", None),
             )
 
-    fetched_at = datetime.now(tz=timezone.utc)
+    fetched_at = datetime.now(tz=UTC)
 
     metrics = [
         {

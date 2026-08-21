@@ -885,8 +885,11 @@ class IssuesStream(GitHubRestStream):
     name = "issues"
     path = "/repos/{org}/{repo}/issues"
     primary_keys: ClassVar[list[str]] = ["id"]
-    replication_key = "updated_at"
-    parent_stream_type = RepositoryStream
+    # Annotated so subclasses can widen these back: an unannotated assignment
+    # here would pin the attribute types to `str` / `type[RepositoryStream]`,
+    # which the issue sub-streams below legitimately override.
+    replication_key: str | None = "updated_at"
+    parent_stream_type: type[GitHubRestStream] | None = RepositoryStream
     ignore_parent_replication_key = True
     state_partitioning_keys: ClassVar[list[str]] = ["repo", "org"]
     use_cursor_pagination = True
@@ -1016,6 +1019,21 @@ class IssuesStream(GitHubRestStream):
     ).to_dict()
 
 
+def _issue_schema_with(**extra_properties: dict) -> dict:
+    """Return the issues schema with `extra_properties` added ahead of its own.
+
+    The issue sub-streams below all emit full issue objects with one or two
+    linking fields added, so they derive their schema from `IssuesStream`.
+    """
+    return {
+        **IssuesStream.schema,
+        "properties": {
+            **extra_properties,
+            **IssuesStream.schema["properties"],
+        },
+    }
+
+
 class SubIssuesStream(IssuesStream):
     """Defines the 'sub_issues' stream: the sub-issues (children) of each issue.
 
@@ -1034,13 +1052,7 @@ class SubIssuesStream(IssuesStream):
     use_cursor_pagination = False
     state_partitioning_keys: ClassVar[list[str]] = ["repo", "org"]
 
-    schema: ClassVar[dict] = {
-        **IssuesStream.schema,
-        "properties": {
-            "parent_issue_number": {"type": ["integer", "null"]},
-            **IssuesStream.schema["properties"],
-        },
-    }
+    schema = _issue_schema_with(parent_issue_number={"type": ["integer", "null"]})
 
     def get_url_params(
         self,
@@ -1074,13 +1086,7 @@ class _IssueDependenciesStream(IssuesStream):
     state_partitioning_keys: ClassVar[list[str]] = ["repo", "org"]
     primary_keys: ClassVar[list[str]] = ["repo_id", "source_issue_number", "id"]
 
-    schema: ClassVar[dict] = {
-        **IssuesStream.schema,
-        "properties": {
-            "source_issue_number": {"type": ["integer", "null"]},
-            **IssuesStream.schema["properties"],
-        },
-    }
+    schema = _issue_schema_with(source_issue_number={"type": ["integer", "null"]})
 
     def get_url_params(
         self,

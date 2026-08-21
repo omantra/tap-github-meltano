@@ -1,6 +1,6 @@
 import logging
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,7 +17,7 @@ from tap_github.authenticator import (
 
 
 def _now():
-    return datetime.now(tz=timezone.utc)
+    return datetime.now(tz=UTC)
 
 
 class TestTokenManager:
@@ -53,7 +53,7 @@ class TestTokenManager:
             17,
             47,
             53,
-            tzinfo=timezone.utc,
+            tzinfo=UTC,
         )
         assert token_manager.rate_limit_used == 1
 

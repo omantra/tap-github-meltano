@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, cast
 from urllib.parse import parse_qs, urlparse
 
 import requests
-from backoff import expo, on_exception
+from backoff import expo, full_jitter, on_exception
 from dateutil.parser import parse
 from nested_lookup import nested_lookup
 from singer_sdk.exceptions import FatalAPIError, RetriableAPIError
@@ -73,7 +73,9 @@ class GitHubRestStream(RESTStream):
         expo,
         RetriableAPIError,
         max_tries=5,
-        jitter=0.5,
+        # `jitter` must be a callable taking the computed wait and returning the
+        # jittered wait; passing a bare float raises TypeError on the first retry.
+        jitter=full_jitter,
     )
     def _send_request_with_backoff(
         self, request: requests.PreparedRequest

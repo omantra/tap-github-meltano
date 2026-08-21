@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from os import environ
 from random import choice, shuffle
 from typing import TYPE_CHECKING, Any
@@ -56,7 +56,7 @@ class TokenManager:
         self.rate_limit_remaining = int(response_headers["X-RateLimit-Remaining"])
         self.rate_limit_reset = datetime.fromtimestamp(
             int(response_headers["X-RateLimit-Reset"]),
-            tz=timezone.utc,
+            tz=UTC,
         )
         self.rate_limit_used = int(response_headers["X-RateLimit-Used"])
 
@@ -93,7 +93,7 @@ class TokenManager:
             return True
         return self.rate_limit_used <= (
             self.rate_limit - self.rate_limit_buffer
-        ) or self.rate_limit_reset <= datetime.now(tz=timezone.utc)
+        ) or self.rate_limit_reset <= datetime.now(tz=UTC)
 
 
 class PersonalTokenManager(TokenManager):
@@ -135,7 +135,7 @@ def generate_app_access_token(
     github_private_key: str,
     github_installation_id: str | None = None,
 ) -> tuple[str, datetime]:
-    produced_at = datetime.now(tz=timezone.utc)
+    produced_at = datetime.now(tz=UTC)
     jwt_token = generate_jwt_token(github_app_id, github_private_key)
 
     headers = {"Authorization": f"Bearer {jwt_token}"}
@@ -224,9 +224,9 @@ class AppTokenManager(TokenManager):
             True if the token is valid and has enough api calls remaining.
         """
         if self.token_expires_at is not None:
-            close_to_expiry = datetime.now(
-                tz=timezone.utc
-            ) > self.token_expires_at - timedelta(minutes=self.expiry_time_buffer)
+            close_to_expiry = datetime.now(tz=UTC) > self.token_expires_at - timedelta(
+                minutes=self.expiry_time_buffer
+            )
 
             if close_to_expiry:
                 self.claim_token()
@@ -372,7 +372,7 @@ class GitHubTokenAuthenticator(APIAuthenticatorBase):
                     )
                     if app_token_manager.is_valid_token():
                         token_managers[org].append(app_token_manager)
-                except ValueError as e:  # noqa: PERF203
+                except ValueError as e:
                     logger.warning(
                         f"An error was thrown while preparing an app token: {e}"
                     )
@@ -570,17 +570,18 @@ class GitHubTokenAuthenticator(APIAuthenticatorBase):
         all_token_managers = [
             tm for tokens in self.token_managers.values() for tm in tokens
         ]
-        next_tm = min(
-            (tm for tm in all_token_managers if tm.rate_limit_reset is not None),
-            key=lambda tm: tm.rate_limit_reset,
-            default=None,
-        )
+        # Pair each manager with its reset time so the earliest one can be picked
+        # without losing the `is not None` narrowing on `rate_limit_reset`.
+        pending_resets = [
+            (tm.rate_limit_reset, tm)
+            for tm in all_token_managers
+            if tm.rate_limit_reset is not None
+        ]
 
-        if next_tm:
-            now = datetime.now(tz=timezone.utc)
-            wait_seconds = max(
-                0, int((next_tm.rate_limit_reset - now).total_seconds()) + 5
-            )
+        if pending_resets:
+            reset_at, next_tm = min(pending_resets, key=lambda pair: pair[0])
+            now = datetime.now(tz=UTC)
+            wait_seconds = max(0, int((reset_at - now).total_seconds()) + 5)
             logger.warning(
                 f"All GitHub tokens have reached their rate limit. "
                 f"Waiting {wait_seconds} seconds for token credits to reset."
@@ -620,7 +621,7 @@ class GitHubTokenAuthenticator(APIAuthenticatorBase):
             if self.active_token:
                 if not self.active_token.has_calls_remaining():
                     self.get_next_auth_token()
-                if self.active_token and self.active_token.token:
+                if self.active_token.token:
                     request.headers["Authorization"] = (
                         f"token {self.active_token.token}"
                     )
