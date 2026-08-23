@@ -602,10 +602,11 @@ class GitHubTokenAuthenticator(APIAuthenticatorBase):
         self,
         response_headers: requests.models.CaseInsensitiveDict,
     ) -> None:
-        # If no token or only one token is available, return early.
-        # Count total tokens across all organizations
-        total_tokens = sum(len(tokens) for tokens in self.token_managers.values())
-        if total_tokens <= 1 or self.active_token is None:
+        # Rate-limit state is tracked even when a single token is configured:
+        # `get_next_auth_token()` has nothing to rotate to in that case, so it
+        # falls back to waiting until the token's own reset -- and it can only
+        # do that if `rate_limit_reset` has been recorded from a response.
+        if self.active_token is None:
             return
 
         self.active_token.update_rate_limit(response_headers)

@@ -17,6 +17,18 @@ if TYPE_CHECKING:
 sys.stdout = FilterStdOutput(sys.stdout, r'{"type": ')
 
 
+def _env_targets(var: str, default: str) -> list[str]:
+    """Read a comma-separated list of live-test targets from the environment.
+
+    The upstream defaults are kept as fallbacks so this fork can repoint the
+    live tests at its own org -- which owns the repos, and so can exercise the
+    `traffic_*` streams and list stargazers -- without editing them.
+    """
+    return [
+        item.strip() for item in os.environ.get(var, default).split(",") if item.strip()
+    ]
+
+
 @pytest.fixture
 def search_config():
     return {
@@ -39,7 +51,9 @@ def repo_list_config(request):
     """
     marker = request.node.get_closest_marker("repo_list")
     if marker is None:
-        repo_list = ["MeltanoLabs/tap-github", "mapswipe/mapswipe"]
+        repo_list = _env_targets(
+            "TAP_GITHUB_TEST_REPOS", "MeltanoLabs/tap-github,mapswipe/mapswipe"
+        )
     else:
         repo_list = marker.args[0]
 
@@ -58,7 +72,11 @@ def username_list_config(request):
     @pytest.mark.username_list(['ericboucher', 'aaronsteers'])
     """
     marker = request.node.get_closest_marker("username_list")
-    username_list = ["ericboucher", "aaronsteers"] if marker is None else marker.args[0]
+    username_list = (
+        _env_targets("TAP_GITHUB_TEST_USERNAMES", "ericboucher,aaronsteers")
+        if marker is None
+        else marker.args[0]
+    )
 
     return {
         "metrics_log_level": "warning",
@@ -75,7 +93,11 @@ def user_id_list_config(request):
     @pytest.mark.user_id_list(['ericboucher', 'aaronsteers'])
     """
     marker = request.node.get_closest_marker("user_id_list")
-    user_id_list = [1, 2] if marker is None else marker.args[0]
+    user_id_list = (
+        [int(uid) for uid in _env_targets("TAP_GITHUB_TEST_USER_IDS", "1,2")]
+        if marker is None
+        else marker.args[0]
+    )
 
     return {
         "metrics_log_level": "warning",
@@ -93,7 +115,11 @@ def organization_list_config(request):
     """
     marker = request.node.get_closest_marker("organization_list")
 
-    organization_list = ["MeltanoLabs"] if marker is None else marker.args[0]
+    organization_list = (
+        _env_targets("TAP_GITHUB_TEST_ORGS", "MeltanoLabs")
+        if marker is None
+        else marker.args[0]
+    )
 
     return {
         "metrics_log_level": "warning",

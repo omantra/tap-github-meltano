@@ -2154,6 +2154,12 @@ class StargazersStream(GitHubRestStream):
     replication_key = "starred_at"
     # GitHub is missing the "since" parameter on this endpoint.
     use_fake_since_parameter = True
+    # GitHub no longer exposes stargazer identities for repos the token does not
+    # own: this endpoint 404s (while the repo itself is readable, and the GraphQL
+    # `stargazers` connection returns an empty list next to a non-zero
+    # `stargazerCount`). Tolerate it and skip the stream for that repo rather
+    # than aborting the whole sync.
+    tolerated_http_errors: ClassVar[list[int]] = [404]
 
     def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002, ANN003
         super().__init__(*args, **kwargs)

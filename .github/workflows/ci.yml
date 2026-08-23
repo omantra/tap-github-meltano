@@ -44,6 +44,10 @@ jobs:
       GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
       ORG_LEVEL_TOKEN: ${{secrets.ORG_LEVEL_TOKEN}}
       TOX_GH_MAJOR_MINOR: ${{ matrix.python-version }}
+      # Point the live tests at this repo rather than upstream's. It is small
+      # (so the per-issue/per-PR child streams barely fan out) and the default
+      # `secrets.GITHUB_TOKEN` can read it, being the repo the job runs in.
+      TAP_GITHUB_TEST_REPOS: ${{ github.repository }}
     strategy:
       matrix:
         python-version:

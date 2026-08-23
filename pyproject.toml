@@ -104,6 +104,8 @@ markers = [
     "noconfig: mark a test as not requiring a config",
     "repo_list: mark a test as using a list of repos in config",
     "username_list: mark a test as using a list of usernames in config",
+    "user_id_list: mark a test as using a list of user ids in config",
+    "organization_list: mark a test as using a list of organizations in config",
 ]
 testpaths = [
     "tests",
@@ -148,8 +150,11 @@ env_list = [
 
 [tool.tox.gh.python]
 # 3.13 carries the `type` (mypy) env, which used to run under 3.14 before that
-# version was dropped from the CI matrix.
-"3.13" = ["type", "noconfig"]
+# version was dropped from the CI matrix. The bare "3.13" entry is the full
+# live test suite (env_run_base); without it CI would only run `type` and the
+# `noconfig` discovery smoke test. As upstream did, the full suite runs under
+# one version only -- the others just smoke-test -- to limit GitHub API usage.
+"3.13" = ["type", "noconfig", "3.13"]
 "3.12" = ["noconfig"]
 
 [tool.tox.env_run_base]
