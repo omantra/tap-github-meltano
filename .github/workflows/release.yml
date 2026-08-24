@@ -5,6 +5,9 @@ on:
   push:
     tags:
     - "v*"
+  # Lets the build be exercised without inventing a tag. The publish job stays
+  # gated on being the upstream repo, so a manual run only ever builds.
+  workflow_dispatch:
 
 permissions:
   contents: write
