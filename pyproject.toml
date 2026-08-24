@@ -150,11 +150,18 @@ env_list = [
 
 [tool.tox.gh.python]
 # 3.13 carries the `type` (mypy) env, which used to run under 3.14 before that
-# version was dropped from the CI matrix. The bare "3.13" entry is the full
-# live test suite (env_run_base); without it CI would only run `type` and the
-# `noconfig` discovery smoke test. As upstream did, the full suite runs under
-# one version only -- the others just smoke-test -- to limit GitHub API usage.
-"3.13" = ["type", "noconfig", "3.13"]
+# version was dropped from the CI matrix.
+#
+# The full live suite (the bare "3.13" env from env_run_base) is deliberately
+# NOT listed here: a cold-cache run costs ~1600 GitHub API requests, while
+# `secrets.GITHUB_TOKEN` allows only 1,000 per hour per repository. CI cannot
+# finish it -- it exhausts the quota and then sits in the workflow's retry step
+# waiting for the reset. Run it locally before tagging instead:
+#
+#     GITHUB_TOKEN=<a PAT> uv run pytest
+#
+# Re-add "3.13" here if CI is ever given a token with a 5,000/hour limit.
+"3.13" = ["type", "noconfig"]
 "3.12" = ["noconfig"]
 
 [tool.tox.env_run_base]

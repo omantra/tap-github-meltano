@@ -48,6 +48,13 @@ jobs:
       # (so the per-issue/per-PR child streams barely fan out) and the default
       # `secrets.GITHUB_TOKEN` can read it, being the repo the job runs in.
       TAP_GITHUB_TEST_REPOS: ${{ github.repository }}
+      # NB: the pagination caps in tests/conftest.py are deliberately NOT set
+      # here. Measured cold-cache cost with per_page=5/max_results=15 was 1512
+      # requests against ~1600 uncapped -- a ~6% saving -- because the cost is
+      # dominated by child streams fetching per parent record, not by page
+      # depth. They also fail `test_get_a_user_in_user_usernames_mode`, which
+      # asserts >150 records to prove deep pagination, so no cap can both save
+      # requests and satisfy it.
     strategy:
       matrix:
         python-version:

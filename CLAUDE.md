@@ -41,6 +41,23 @@ uv run tox                           # mypy + tests across py3.12–3.13 (tox co
 
 Tests require GitHub auth tokens via env vars (any `GITHUB_TOKEN*`) or `.secrets/`. Without a token, the API rate limit is very low and tests will fail on 403s. `requests-cache` (dev dep) caches API responses to speed up repeated test runs. Tests marked `noconfig` run without config.
 
+### The live suite is a local gate, not a CI one (xflow)
+
+CI runs only `type` (mypy + ty) and the `noconfig` discovery test. A cold-cache run of the **full** suite costs ~1600 GitHub API requests, but `secrets.GITHUB_TOKEN` is capped at 1,000/hour per repository, so CI cannot finish it — it exhausts the quota and then sleeps in the workflow's retry step. Run it locally before tagging a release:
+
+```bash
+GITHUB_TOKEN=<a PAT with 5,000/hr>  uv run pytest       # ~1600 requests, ~70 min
+```
+
+Notes on cost and targets, all measured:
+
+- Live-test targets are env-overridable: `TAP_GITHUB_TEST_REPOS`, `_ORGS`, `_USERNAMES`, `_USER_IDS` (comma-separated; upstream's values are the fallbacks). `.env` points them at this repo.
+- Cost is dominated by the nine child streams that fetch **per parent record** (`sub_issues`, `issue_dependencies_*`, `issue_field_values`, `pull_request_{commits,diffs,files}`, `reviews`, `review_comment_reactions`), so it scales with issue/PR count, not date range. Targeting a small repo cut a run from ~5000 to ~1600 requests.
+- `start_date` is already *today* in the fixtures, and 33 of 52 repo-mode streams have no replication key while 5 more set `use_fake_since_parameter` (paging everything and filtering client-side). Widening it only adds cost.
+- `tests/conftest.py` offers `TAP_GITHUB_TEST_PER_PAGE` / `TAP_GITHUB_TEST_MAX_RESULTS` pagination caps, but they save only ~6% and break `test_get_a_user_in_user_usernames_mode`, which asserts >150 records on purpose. Not a useful lever.
+- Extra PATs from the *same* account add no headroom: GitHub's primary rate limit is per user, not per token.
+- Three tests dominate (`test_last_state_message_is_valid` and the two `test_get_a_repository_in_repo_list_mode` cases). They are pinned to `repo_list_2` — MeltanoLabs repos with deliberate case typos, validated against hard-coded repo IDs — so the target env vars do not affect them.
+
 ## Architecture
 
 **Config-mode → stream selection.** A run must specify exactly one "path" config key. `tap.py`'s `discover_streams()` reads the config, then `streams.py`'s `Streams` enum maps each valid query key to the set of stream classes it enables:
