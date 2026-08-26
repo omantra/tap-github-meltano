@@ -56,6 +56,7 @@ Notes on cost and targets, all measured:
 - `start_date` is already *today* in the fixtures, and 33 of 52 repo-mode streams have no replication key while 5 more set `use_fake_since_parameter` (paging everything and filtering client-side). Widening it only adds cost.
 - `tests/conftest.py` offers `TAP_GITHUB_TEST_PER_PAGE` / `TAP_GITHUB_TEST_MAX_RESULTS` pagination caps, but they save only ~6% and break `test_get_a_user_in_user_usernames_mode`, which asserts >150 records on purpose. Not a useful lever.
 - Extra PATs from the *same* account add no headroom: GitHub's primary rate limit is per user, not per token.
+- GitHub answers a failed **GraphQL** query with HTTP 200 and the failure in the body, so `requests-cache` would store it and replay a one-off server error for the full 24h expiry — a flake that no amount of re-running clears. `tests/__init__.py` passes a `filter_fn` that refuses to cache any GraphQL response carrying `errors`. If you ever see a test failing identically on every run with `CachedResponse` in the traceback, suspect a poisoned cache entry and delete `.cache/api_calls_tests_cache.sqlite`.
 - Three tests dominate (`test_last_state_message_is_valid` and the two `test_get_a_repository_in_repo_list_mode` cases). They are pinned to `repo_list_2` — MeltanoLabs repos with deliberate case typos, validated against hard-coded repo IDs — so the target env vars do not affect them.
 
 ## Architecture
