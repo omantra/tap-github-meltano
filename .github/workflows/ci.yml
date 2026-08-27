@@ -32,12 +32,17 @@ jobs:
   tests:
     name: CI
 
-    # A same-repo PR (e.g. xflow_dev -> main) fires both `push` and
-    # `pull_request`, and the two events have different `github.ref` values so
-    # the concurrency group above cannot dedupe them. Push runs cover our own
-    # branches; only fork PRs (which produce no push event here) need the
-    # pull_request run.
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    # A same-repo PR fires both `push` and `pull_request`, and the two events
+    # have different `github.ref` values, so the concurrency group above cannot
+    # dedupe them. Skip the `pull_request` run only when a `push` run already
+    # covered that commit -- which is true just for the branches listed in the
+    # push trigger. Everything else runs: fork PRs (no push event here) and
+    # same-repo PRs from any other branch, `dependabot/*` and feature branches
+    # included. Keep this list in step with the push `branches:` above.
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name != github.repository
+      || !contains(fromJSON('["main", "xflow_dev"]'), github.event.pull_request.head.ref)
 
     runs-on: ubuntu-latest
     env:
